@@ -19,7 +19,7 @@ Analiza el siguiente ticket de soporte y devuelve un JSON con esta estructura ex
 
 {
   "category": "una de: Cuenta y acceso, Facturacion, Disponibilidad y rendimiento, Integraciones, Datos y exportacion, Solicitud de funcion, Seguridad, Otro",
-  "priority": "P1 (Critica), P2 (Alta), P3 (Normal), P4 (Baja)",
+  "priority": "unicamente uno de estos codigos, sin descripcion: P1, P2, P3, P4",
   "sentiment": "positivo, neutral, negativo, frustrado",
   "product_or_module": "modulo o producto afectado",
   "summary": "resumen tecnico conciso",

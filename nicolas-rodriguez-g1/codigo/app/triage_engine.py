@@ -5,6 +5,7 @@ Procesa tickets, valida salida, maneja fallos y abstencion.
 import concurrent.futures
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
@@ -180,10 +181,12 @@ class TriageEngine:
             logger.warning(f"Ticket {ticket_id}: categoria invalida '{cat}', usando 'Otro'")
 
         # Prioridad
-        pri = glm_result.get("priority", "P3")
+        pri_raw = str(glm_result.get("priority", "P3"))
+        pri_match = re.match(r"\s*(P[1-4])\b", pri_raw, re.IGNORECASE)
+        pri = pri_match.group(1).upper() if pri_match else pri_raw
         validated["priority"] = pri if pri in VALID_PRIORITIES else "P3"
         if pri not in VALID_PRIORITIES:
-            logger.warning(f"Ticket {ticket_id}: prioridad invalida '{pri}', usando 'P3'")
+            logger.warning(f"Ticket {ticket_id}: prioridad invalida '{pri_raw}', usando 'P3'")
 
         # Sentimiento
         sent = glm_result.get("sentiment", "neutral")
