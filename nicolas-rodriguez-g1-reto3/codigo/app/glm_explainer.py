@@ -19,7 +19,7 @@ class OperationsExplainer:
 
     def __init__(self, api_key: str | None = None, base_url: str | None = None):
         self._api_key = api_key or os.getenv("GLM_API_KEY", "")
-        self._base_url = base_url or os.getenv("GLM_BASE_URL", "https://open.bigmodel.cn/api/paas/v4")
+        self._base_url = base_url or os.getenv("GLM_BASE_URL", "http://149.232.135.126:4000/v1")
         self._model = os.getenv("GLM_MODEL", "glm-5.2")
 
     def explain_hold_history(
