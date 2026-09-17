@@ -154,6 +154,19 @@
     <script>
         let allTickets = [];
         let allIncidents = [];
+        let currentList = [];
+
+        // Escapa HTML para que texto de tickets (dato no confiable, puede venir
+        // de un usuario o del modelo) nunca se interprete como markup/JS al
+        // insertarse via innerHTML.
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
 
         // Reloj T-80
         const startTime = new Date();
@@ -229,26 +242,38 @@
 
         function renderTickets(tickets) {
             const list = document.getElementById('ticket-list');
-            if (!tickets || tickets.length === 0) {
+            // Se guarda la lista tal como se renderizo para que cada fila pueda
+            // referirse a "su" ticket por indice (ver showDetailByIndex), en vez
+            // de volcar el JSON completo del ticket dentro de un atributo HTML:
+            // eso se rompia si el texto del ticket traia una comilla (' o "),
+            // algo muy plausible en texto libre escrito por un agente o
+            // generado por el propio modelo.
+            currentList = tickets || [];
+            if (!currentList.length) {
                 list.innerHTML = '<div class="loading">No hay tickets.</div>';
                 return;
             }
             const priorityIcons = { P1: '🔴', P2: '🟠', P3: '🟡', P4: '🟢' };
-            list.innerHTML = tickets.map(t => {
+            list.innerHTML = currentList.map((t, i) => {
                 if (t.error) {
-                    return `<div class="ticket-item" onclick="showDetail(${JSON.stringify(t).replace(/"/g, '&quot;')})">
-                        <span class="priority p1">ERR</span> ${t.ticket_id} - ${t.error}
+                    return `<div class="ticket-item" onclick="showDetailByIndex(${i})">
+                        <span class="priority p1">ERR</span> ${escapeHtml(t.ticket_id)} - ${escapeHtml(t.error)}
                     </div>`;
                 }
                 const pri = t.priority || 'P4';
-                const incBadge = t.incident_group_id ? `<span class="badge badge-inc">${t.incident_group_id}</span>` : '';
+                const incBadge = t.incident_group_id ? `<span class="badge badge-inc">${escapeHtml(t.incident_group_id)}</span>` : '';
                 const reviewBadge = t.requires_human_review ? `<span class="badge badge-review">REVIEW</span>` : '';
-                return `<div class="ticket-item" onclick='showDetail(${JSON.stringify(t)})'>
-                    <span class="priority ${pri.toLowerCase()}">${priorityIcons[pri]} ${pri}</span>
-                    <strong>${t.ticket_id}</strong> ${t.category || 'N/A'} ${incBadge} ${reviewBadge}
-                    <div style="margin-top:4px; color:#8b949e; font-size:0.85em;">${(t.summary || '').substring(0, 80)}</div>
+                return `<div class="ticket-item" onclick="showDetailByIndex(${i})">
+                    <span class="priority ${pri.toLowerCase()}">${priorityIcons[pri] || ''} ${escapeHtml(pri)}</span>
+                    <strong>${escapeHtml(t.ticket_id)}</strong> ${escapeHtml(t.category || 'N/A')} ${incBadge} ${reviewBadge}
+                    <div style="margin-top:4px; color:#8b949e; font-size:0.85em;">${escapeHtml((t.summary || '').substring(0, 80))}</div>
                 </div>`;
             }).join('');
+        }
+
+        function showDetailByIndex(i) {
+            const ticket = currentList[i];
+            if (ticket) showDetail(ticket);
         }
 
         function renderIncidents(incidents) {
@@ -260,14 +285,15 @@
             list.innerHTML = incidents.map(g => {
                 const majorClass = g.major_incident_candidate ? 'major' : '';
                 const majorBadge = g.major_incident_candidate ? '<span class="badge badge-major">MAJOR INCIDENT</span>' : '';
-                const opPri = g.operational_priority ? `<span class="priority ${g.operational_priority.toLowerCase()}">${g.operational_priority}</span>` : '';
+                const opPri = g.operational_priority ? `<span class="priority ${g.operational_priority.toLowerCase()}">${escapeHtml(g.operational_priority)}</span>` : '';
+                const groupId = escapeHtml(g.incident_group_id);
                 return `<div class="incident-item ${majorClass}">
-                    <strong>${g.incident_group_id}</strong> ${majorBadge} ${opPri}
-                    <div style="margin-top:4px;"><strong>${g.title}</strong></div>
-                    <div style="color:#8b949e; font-size:0.85em; margin-top:4px;">${g.ticket_count} tickets | ${g.affected_module} | ${g.affected_region}</div>
-                    <div style="color:#8b949e; font-size:0.85em; margin-top:4px;">${g.summary}</div>
-                    ${g.major_incident_candidate ? `<button class="btn btn-blue btn-sm" style="margin-top:6px;" onclick="generateBrief('${g.incident_group_id}')">Generar Brief Ejecutivo</button>` : ''}
-                    <div id="brief-${g.incident_group_id}"></div>
+                    <strong>${groupId}</strong> ${majorBadge} ${opPri}
+                    <div style="margin-top:4px;"><strong>${escapeHtml(g.title)}</strong></div>
+                    <div style="color:#8b949e; font-size:0.85em; margin-top:4px;">${escapeHtml(g.ticket_count)} tickets | ${escapeHtml(g.affected_module)} | ${escapeHtml(g.affected_region)}</div>
+                    <div style="color:#8b949e; font-size:0.85em; margin-top:4px;">${escapeHtml(g.summary)}</div>
+                    ${g.major_incident_candidate ? `<button class="btn btn-blue btn-sm" style="margin-top:6px;" onclick="generateBrief('${groupId}')">Generar Brief Ejecutivo</button>` : ''}
+                    <div id="brief-${groupId}"></div>
                 </div>`;
             }).join('');
         }
@@ -278,31 +304,31 @@
             detail.style.display = 'block';
 
             if (ticket.error) {
-                content.innerHTML = `<div class="detail-item"><span class="key">Error</span><div class="val" style="color:#f85149;">${ticket.error}</div></div>`;
+                content.innerHTML = `<div class="detail-item"><span class="key">Error</span><div class="val" style="color:#f85149;">${escapeHtml(ticket.error)}</div></div>`;
                 return;
             }
 
             content.innerHTML = `
                 <div style="margin-bottom:10px;">
-                    <span class="priority ${(ticket.priority||'').toLowerCase()}">${ticket.priority || 'N/A'}</span>
-                    ${ticket.incident_group_id ? '<span class="badge badge-inc">' + ticket.incident_group_id + '</span>' : ''}
+                    <span class="priority ${(ticket.priority||'').toLowerCase()}">${escapeHtml(ticket.priority || 'N/A')}</span>
+                    ${ticket.incident_group_id ? '<span class="badge badge-inc">' + escapeHtml(ticket.incident_group_id) + '</span>' : ''}
                     ${ticket.requires_human_review ? '<span class="badge badge-review">REQUIERE REVISION HUMANA</span>' : ''}
                 </div>
                 <div class="detail-grid">
-                    <div class="detail-item"><span class="key">Ticket ID</span><div class="val">${ticket.ticket_id}</div></div>
-                    <div class="detail-item"><span class="key">Cliente</span><div class="val">${ticket.customer_id || 'N/A'}</div></div>
-                    <div class="detail-item"><span class="key">Categoria</span><div class="val">${ticket.category || 'N/A'}</div></div>
-                    <div class="detail-item"><span class="key">Prioridad</span><div class="val">${ticket.priority || 'N/A'}</div></div>
-                    <div class="detail-item"><span class="key">Sentimiento</span><div class="val">${ticket.sentiment || 'N/A'}</div></div>
-                    <div class="detail-item"><span class="key">Modulo</span><div class="val">${ticket.product_or_module || 'N/A'}</div></div>
-                    <div class="detail-item"><span class="key">Region</span><div class="val">${ticket.region || 'N/A'}</div></div>
+                    <div class="detail-item"><span class="key">Ticket ID</span><div class="val">${escapeHtml(ticket.ticket_id)}</div></div>
+                    <div class="detail-item"><span class="key">Cliente</span><div class="val">${escapeHtml(ticket.customer_id || 'N/A')}</div></div>
+                    <div class="detail-item"><span class="key">Categoria</span><div class="val">${escapeHtml(ticket.category || 'N/A')}</div></div>
+                    <div class="detail-item"><span class="key">Prioridad</span><div class="val">${escapeHtml(ticket.priority || 'N/A')}</div></div>
+                    <div class="detail-item"><span class="key">Sentimiento</span><div class="val">${escapeHtml(ticket.sentiment || 'N/A')}</div></div>
+                    <div class="detail-item"><span class="key">Modulo</span><div class="val">${escapeHtml(ticket.product_or_module || 'N/A')}</div></div>
+                    <div class="detail-item"><span class="key">Region</span><div class="val">${escapeHtml(ticket.region || 'N/A')}</div></div>
                     <div class="detail-item"><span class="key">Confianza</span><div class="val">${((ticket.confidence || 0) * 100).toFixed(0)}%</div></div>
                 </div>
-                <div class="detail-item" style="margin-top:10px;"><span class="key">Texto Original</span><div class="val">${ticket.original_text || 'N/A'}</div></div>
-                <div class="detail-item" style="margin-top:10px;"><span class="key">Resumen</span><div class="val">${ticket.summary || 'N/A'}</div></div>
-                <div class="detail-item" style="margin-top:10px;"><span class="key">Accion Sugerida</span><div class="val">${ticket.suggested_action || 'N/A'}</div></div>
-                <div class="detail-item" style="margin-top:10px;"><span class="key">Respuesta Sugerida</span><div class="val">${ticket.suggested_response || 'N/A'}</div></div>
-                ${ticket.correlation_id ? '<div class="detail-item" style="margin-top:10px;"><span class="key">Correlation ID</span><div class="val">' + ticket.correlation_id + '</div></div>' : ''}
+                <div class="detail-item" style="margin-top:10px;"><span class="key">Texto Original</span><div class="val">${escapeHtml(ticket.original_text || 'N/A')}</div></div>
+                <div class="detail-item" style="margin-top:10px;"><span class="key">Resumen</span><div class="val">${escapeHtml(ticket.summary || 'N/A')}</div></div>
+                <div class="detail-item" style="margin-top:10px;"><span class="key">Accion Sugerida</span><div class="val">${escapeHtml(ticket.suggested_action || 'N/A')}</div></div>
+                <div class="detail-item" style="margin-top:10px;"><span class="key">Respuesta Sugerida</span><div class="val">${escapeHtml(ticket.suggested_response || 'N/A')}</div></div>
+                ${ticket.correlation_id ? '<div class="detail-item" style="margin-top:10px;"><span class="key">Correlation ID</span><div class="val">' + escapeHtml(ticket.correlation_id) + '</div></div>' : ''}
             `;
         }
 
@@ -330,10 +356,10 @@
                 const brief = await resp.json();
                 el.innerHTML = `<div class="detail-item" style="margin-top:8px;">
                     <span class="key">Brief Ejecutivo</span>
-                    <div class="val"><strong>${brief.executive_summary || 'N/A'}</strong></div>
-                    <div class="val" style="margin-top:4px;"><strong>Alcance:</strong> ${brief.affected_scope || 'N/A'}</div>
-                    <div class="val" style="margin-top:4px;"><strong>Patron:</strong> ${brief.probable_pattern || 'N/A'}</div>
-                    <div class="val" style="margin-top:4px;"><strong>Acciones:</strong><ul>${(brief.recommended_next_actions || []).map(a => '<li>' + a + '</li>').join('')}</ul></div>
+                    <div class="val"><strong>${escapeHtml(brief.executive_summary || 'N/A')}</strong></div>
+                    <div class="val" style="margin-top:4px;"><strong>Alcance:</strong> ${escapeHtml(brief.affected_scope || 'N/A')}</div>
+                    <div class="val" style="margin-top:4px;"><strong>Patron:</strong> ${escapeHtml(brief.probable_pattern || 'N/A')}</div>
+                    <div class="val" style="margin-top:4px;"><strong>Acciones:</strong><ul>${(brief.recommended_next_actions || []).map(a => '<li>' + escapeHtml(a) + '</li>').join('')}</ul></div>
                 </div>`;
             } catch (e) {
                 el.innerHTML = '<div class="loading">Error: ' + e.message + '</div>';

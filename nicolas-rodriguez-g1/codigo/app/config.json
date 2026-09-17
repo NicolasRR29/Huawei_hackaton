@@ -9,6 +9,7 @@
   "retry_backoff_base": 2,
   "retry_backoff_factor": 1,
   "confidence_threshold": 0.60,
+  "max_concurrent_requests": 5,
   "categories": [
     "Cuenta y acceso",
     "Facturacion",

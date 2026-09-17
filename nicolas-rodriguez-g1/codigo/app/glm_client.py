@@ -395,12 +395,12 @@ Solo JSON, sin texto adicional."""
                 continue
             group = [t1]
             seen.add(t1.get("ticket_id"))
-            text1 = t1.get("text", "").lower()
+            text1 = (t1.get("original_text") or t1.get("text", "")).lower()
 
             for j, t2 in enumerate(tickets[i+1:], i+1):
                 if t2.get("ticket_id") in seen:
                     continue
-                text2 = t2.get("text", "").lower()
+                text2 = (t2.get("original_text") or t2.get("text", "")).lower()
 
                 # Calcular similitud simple por keywords compartidos
                 keywords1 = set(re.findall(r'\b\w+\b', text1)) - {"el", "la", "los", "las", "de", "del", "y", "a", "en", "que", "no", "con", "por", "para", "es", "se", "una", "un"}

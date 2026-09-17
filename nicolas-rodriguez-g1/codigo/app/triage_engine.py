@@ -2,6 +2,7 @@
 Motor de triage - Fases 1 y 2.
 Procesa tickets, valida salida, maneja fallos y abstencion.
 """
+import concurrent.futures
 import json
 import logging
 import uuid
@@ -28,6 +29,9 @@ class TriageEngine:
         self.config = config
         self.glm = GLMClient(config)
         self.confidence_threshold = config.get("confidence_threshold", 0.60)
+        # Limite de peticiones concurrentes a GLM dentro de un mismo lote
+        # (Bono B: concurrencia real sin exceder irresponsablemente la cuota).
+        self.max_concurrent_requests = config.get("max_concurrent_requests", 5)
         self.audit_log: List[AuditRecord] = []
 
     def process_ticket(self, ticket: Dict[str, Any]) -> Dict[str, Any]:
@@ -130,19 +134,39 @@ class TriageEngine:
         return result
 
     def process_batch(self, tickets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Procesa un lote de tickets. Un ticket malformado no detiene el resto."""
-        results = []
-        for ticket in tickets:
-            try:
-                result = self.process_ticket(ticket)
-                results.append(result)
-            except Exception as e:
-                logger.error(f"Error procesando ticket {ticket.get('ticket_id', '?')}: {e}")
-                results.append({
-                    "ticket_id": ticket.get("ticket_id", "UNKNOWN"),
-                    "error": str(e),
-                    "requires_human_review": True
-                })
+        """Procesa un lote de tickets concurrentemente (Bono B).
+
+        Usa un ThreadPoolExecutor acotado por max_concurrent_requests para no
+        exceder irresponsablemente la cuota del modelo. Los resultados se
+        devuelven en el mismo orden que la entrada (indexados por posicion,
+        no por orden de finalizacion), sin perder ni duplicar tickets. Un
+        ticket malformado o que lance una excepcion no detiene el resto del
+        lote.
+        """
+        if not tickets:
+            return []
+
+        results: List[Optional[Dict[str, Any]]] = [None] * len(tickets)
+        max_workers = max(1, min(self.max_concurrent_requests, len(tickets)))
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_index = {
+                executor.submit(self.process_ticket, ticket): i
+                for i, ticket in enumerate(tickets)
+            }
+            for future in concurrent.futures.as_completed(future_to_index):
+                i = future_to_index[future]
+                ticket = tickets[i]
+                try:
+                    results[i] = future.result()
+                except Exception as e:
+                    logger.error(f"Error procesando ticket {ticket.get('ticket_id', '?')}: {e}")
+                    results[i] = {
+                        "ticket_id": ticket.get("ticket_id", "UNKNOWN"),
+                        "error": str(e),
+                        "requires_human_review": True
+                    }
+
         return results
 
     def _validate_result(self, glm_result: Dict[str, Any], ticket_id: str) -> Dict[str, Any]:

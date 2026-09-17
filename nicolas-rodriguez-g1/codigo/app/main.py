@@ -4,16 +4,16 @@ Expone endpoints para triage, correlacion y interfaz grafica.
 """
 import json
 import logging
-import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, Request, HTTPException, UploadFile, File
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from .triage_engine import TriageEngine
 from .correlation_engine import CorrelationEngine
@@ -66,8 +66,15 @@ async def health():
 
 @app.post("/api/triage")
 async def triage_ticket(ticket: TicketRequest):
-    """Procesa un ticket individual."""
-    result = triage_engine.process_ticket(ticket.model_dump())
+    """Procesa un ticket individual.
+
+    process_ticket() hace llamadas HTTP sincronas (httpx.Client) y puede
+    dormir varios segundos en los reintentos con backoff. Se ejecuta en un
+    threadpool para no bloquear el event loop de asyncio: sin esto, mientras
+    se clasifica UN ticket con GLM real, el servidor entero (incluido
+    /api/health) queda congelado.
+    """
+    result = await run_in_threadpool(triage_engine.process_ticket, ticket.model_dump())
     return result
 
 
@@ -75,14 +82,14 @@ async def triage_ticket(ticket: TicketRequest):
 async def triage_batch(batch: BatchRequest):
     """Procesa un lote de tickets."""
     global processed_tickets, incident_groups
-    results = triage_engine.process_batch(batch.tickets)
+    results = await run_in_threadpool(triage_engine.process_batch, batch.tickets)
 
     # Guardar resultados
     processed_tickets = results
 
     # Correlacionar
     valid_results = [r for r in results if "error" not in r]
-    groups = correlation_engine.correlate(valid_results)
+    groups = await run_in_threadpool(correlation_engine.correlate, valid_results)
     processed_tickets = correlation_engine.assign_groups_to_tickets(processed_tickets, groups)
     incident_groups = groups
 
@@ -103,11 +110,11 @@ async def load_sample():
     with open(data_path, "r", encoding="utf-8") as f:
         tickets = json.load(f)
 
-    results = triage_engine.process_batch(tickets)
+    results = await run_in_threadpool(triage_engine.process_batch, tickets)
     processed_tickets = results
 
     valid_results = [r for r in results if "error" not in r]
-    groups = correlation_engine.correlate(valid_results)
+    groups = await run_in_threadpool(correlation_engine.correlate, valid_results)
     processed_tickets = correlation_engine.assign_groups_to_tickets(processed_tickets, groups)
     incident_groups = groups
 
@@ -168,7 +175,7 @@ async def get_incident_brief(incident_id: str):
     """Genera brief ejecutivo para un incidente mayor (Bono D)."""
     for g in incident_groups:
         if g.get("incident_group_id") == incident_id:
-            brief = triage_engine.glm.generate_executive_brief(g)
+            brief = await run_in_threadpool(triage_engine.glm.generate_executive_brief, g)
             if brief:
                 return brief
             raise HTTPException(status_code=500, detail="No se pudo generar el brief")

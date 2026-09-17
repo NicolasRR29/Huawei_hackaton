@@ -144,7 +144,9 @@ class CorrelationEngine:
         same_region = t1.get("region", "") == t2.get("region", "")
 
         # Similitud de texto
-        sim = self._text_similarity(t1.get("original_text", ""), t2.get("original_text", ""))
+        text1 = t1.get("original_text") or t1.get("text", "")
+        text2 = t2.get("original_text") or t2.get("text", "")
+        sim = self._text_similarity(text1, text2)
 
         # Ventana temporal
         time_close = self._time_close(t1.get("created_at", ""), t2.get("created_at", ""))

@@ -105,7 +105,9 @@ Permite:
 
 Endpoint: `POST /api/triage/batch`
 
-Acepta un array de tickets y procesa cada uno independientemente. Un ticket malformado no detiene el resto del lote.
+Acepta un array de tickets y los procesa **concurrentemente** (hasta `max_concurrent_requests`, configurable en `config.json`, por defecto 5 a la vez) usando un `ThreadPoolExecutor`, para no exceder irresponsablemente la cuota del modelo. Los resultados se devuelven en el mismo orden de entrada, sin perder ni duplicar tickets. Un ticket malformado no detiene el resto del lote.
+
+Las rutas de la API que llaman al motor (`/api/triage`, `/api/triage/batch`, `/api/load-sample`, `/api/incident/{id}/brief`) ejecutan esas llamadas en un threadpool (`starlette.concurrency.run_in_threadpool`) para no bloquear el event loop de FastAPI mientras GLM 5.2 responde o se reintenta con backoff.
 
 ## Validacion de respuestas
 
