@@ -34,7 +34,7 @@ class GLMClient:
     def __init__(self, config: dict) -> None:
         cfg = config.get("glm", {})
         self.api_key = os.environ.get(cfg.get("api_key_env_var", "GLM_API_KEY"), "")
-        self.api_base = cfg.get("api_base_url", "https://open.bigmodel.cn/api/paas/v4")
+        self.api_base = cfg.get("api_base_url", "http://149.232.135.126:4000/v1")
         self.model = cfg.get("model", "glm-5.2")
         self.temperature = cfg.get("temperature", 0.2)
         self.max_tokens = cfg.get("max_tokens", 400)
